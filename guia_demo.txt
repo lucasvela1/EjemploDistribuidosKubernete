@@ -1,0 +1,34 @@
+# PASO 0: PREPARACIÓN PREVIA (Antes de exponer)
+# ------------------------------------------------------------------------------
+docker build -t app-distribuidos:v1 .
+
+# 1. ESTADO INICIAL ("El antes"): Mostrar que no hay nada corriendo
+kubectl get pods
+kubectl get deployments
+kubectl get services
+
+# 2. DESPLIEGUE DECLARATIVO:
+kubectl apply -f k8s-manifest.yaml
+
+# 3. VERIFICAR QUE SE CREARON LAS RÉPLICAS:
+kubectl get pods -o wide
+kubectl get service servicio-distribuidos
+
+# 4. PROBAR EL BALANCEO DE CARGA:
+# En PowerShell usá curl.exe (o abrí el navegador en http://localhost:30080):
+curl.exe http://localhost:30080
+curl.exe http://localhost:30080
+curl.exe http://localhost:30080
+
+# 5. ESCALADO EN VIVO (Pasar a 4 réplicas):
+kubectl scale deployment app-distribuidos --replicas=4
+
+# Ver cómo se levantaron las nuevas:
+kubectl get pods
+
+# 6. MODO DE FALLA & SELF-HEALING:
+# Matar uno de los pods:
+kubectl delete pod app-distribuidos-7d9b9d7bf5-zpgwv
+
+# Ver cómo Kubernetes ya creó otro pod nuevo para reemplazarlo:
+kubectl get pods
