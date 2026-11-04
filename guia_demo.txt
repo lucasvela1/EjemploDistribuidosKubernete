@@ -1,34 +1,122 @@
-# PASO 0: PREPARACIÓN PREVIA (Antes de exponer)
-# ------------------------------------------------------------------------------
-docker build -t app-distribuidos:v1 .
+================================================================================
+       GUÍA COMPLETA: DEMO KUBERNETES - SISTEMAS DISTRIBUIDOS (DESDE CERO)
+================================================================================
 
-# 1. ESTADO INICIAL ("El antes"): Mostrar que no hay nada corriendo
+--------------------------------------------------------------------------------
+PARTE 1: INSTALACIÓN DESDE CERO (Si la PC no tiene Docker ni Kubernetes)
+--------------------------------------------------------------------------------
+
+1. Habilitar WSL 2 (Subsistema de Windows para Linux):
+   Abrir shell como usuario de admin y ejecutar:
+   wsl --install
+   wsl --update
+   (Si pide reiniciar la PC, reiniciarla).
+
+2. Configurar WSL 2 para soportar cgroup v2 (Requerido por Kubernetes v1.35+):
+   En shell (normal), ejecutar estos dos comandos:
+   Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value "[wsl2]`nkernelCommandLine = cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1"
+   wsl --shutdown
+
+3. Instalar Docker Desktop:
+   - Descargar desde: https://www.docker.com/products/docker-desktop/
+   - Instalar dejando marcada la opción "Use WSL 2 instead of Hyper-V".
+   - Abrir Docker Desktop y esperar a que abajo a la izquierda diga "Engine running" (en verde).
+
+4. Activar Kubernetes dentro de Docker Desktop:
+   - En Docker Desktop ir a Settings (ícono de engranaje arriba a la derecha) -> Kubernetes ( o desde el menú izquierdo "Kubernetes" -> "Create cluster").
+   - Marcar "Enable Kubernetes".
+   - En "Cluster provisioning method" (tipo de clúster), elegir "kubeadm" (1 nodo).
+     IMPORTANTE: Elegir "kubeadm" y NO "kind", porque kubeadm comparte las imágenes
+     locales de Docker y expone directamente los puertos NodePort en localhost.
+   - Hacer clic en "Apply" / "Create" y esperar unos minutos hasta que el ícono
+     de Kubernetes abajo a la izquierda se ponga en VERDE ("Cluster: Active").
+
+5. Verificar que el clúster responde:
+   Abrir PowerShell en la carpeta del proyecto y ejecutar:
+   kubectl get nodes
+   (Debe mostrar el nodo "docker-desktop" con estado "Ready").
+
+
+--------------------------------------------------------------------------------
+PARTE 2: PREPARACIÓN PREVIA A LA DEMO (Compilar la imagen)
+--------------------------------------------------------------------------------
+
+1. Construir la imagen Docker de la aplicación (en la carpeta del proyecto):
+   docker build -t app-distribuidos:v1 .
+
+   (Nota: Si ya estaba desplegado de antes y querés limpiar todo para empezar la
+   exposición desde cero, ejecutá: kubectl delete -f k8s-manifest.yaml)
+
+
+--------------------------------------------------------------------------------
+PARTE 3: PASO A PASO DURANTE LA EXPOSICIÓN / DEMO EN VIVO
+--------------------------------------------------------------------------------
+
+# 1. ESTADO INICIAL ("El antes"): Mostrar que el clúster está vacío
 kubectl get pods
 kubectl get deployments
 kubectl get services
 
+
 # 2. DESPLIEGUE DECLARATIVO:
+# Crea los permisos (RBAC), el Deployment (2 réplicas iniciales) y el Service (NodePort 30080)
 kubectl apply -f k8s-manifest.yaml
 
-# 3. VERIFICAR QUE SE CREARON LAS RÉPLICAS:
+
+# 3. VERIFICAR QUE SE CREARON LAS RÉPLICAS Y EL SERVICIO:
 kubectl get pods -o wide
 kubectl get service servicio-distribuidos
 
-# 4. PROBAR EL BALANCEO DE CARGA:
-# En PowerShell usá curl.exe (o abrí el navegador en http://localhost:30080):
-curl.exe http://localhost:30080
+
+# 4. DEMOSTRACIÓN EN EL NAVEGADOR (Panel interactivo):
+# Abrir en el navegador:
+# 👉 http://localhost:30080
+#
+# Qué mostrar en la interfaz web:
+#   a) BALANCEO DE CARGA:
+#      - Tocar "Enviar Petición", "Ráfaga x10" o activar "Auto: ON (1/s)".
+#      - Mostrar cómo el Service de Kubernetes reparte las conexiones entrantes
+#        entre los distintos Pods (cada Pod tiene su propio color, contador y barra de % de tráfico).
+#
+#   b) ESCALADO HORIZONTAL EN VIVO (Escalabilidad):
+#      - En la sección "2. Escalado de Nodos", tocar "+1 Nodo" o "4 Réplicas".
+#      - Mostrar cómo aparecen inmediatamente los nuevos Pods en estado "Iniciando..."
+#        y pasan a "Running", empezando a recibir parte del tráfico automáticamente.
+#      - (Opcional) Mostrar en consola que coincide con la realidad:
+         kubectl get pods
+#
+#   c) SIMULACIÓN DE FALLAS Y AUTO-RECUPERACIÓN (Self-Healing / Alta Disponibilidad):
+#      - Con el tráfico automático activado ("Auto: ON"), hacer clic en el botón rojo
+#        "Apagar Nodo" de cualquiera de los Pods activos.
+#      - Mostrar cómo ese Pod pasa a "Apagando..." -> "Apagado" (tachado), el sistema
+#        NUNCA deja de responder peticiones, y Kubernetes detecta que falta una réplica
+#        creando automáticamente un Pod nuevo con otro identificador para reemplazarlo.
+
+
+# 5. (OPCIONAL) COMANDOS EQUIVALENTES POR CONSOLA:
+# Si se desea mostrar también desde la terminal:
+
+# Probar respuestas en texto plano con curl:
 curl.exe http://localhost:30080
 curl.exe http://localhost:30080
 
-# 5. ESCALADO EN VIVO (Pasar a 4 réplicas):
+# Escalar el Deployment por consola:
 kubectl scale deployment app-distribuidos --replicas=4
-
-# Ver cómo se levantaron las nuevas:
 kubectl get pods
 
-# 6. MODO DE FALLA & SELF-HEALING:
-# Matar uno de los pods:
-kubectl delete pod app-distribuidos-7d9b9d7bf5-zpgwv
-
-# Ver cómo Kubernetes ya creó otro pod nuevo para reemplazarlo:
+# Matar un Pod manualmente por consola:
+kubectl delete pod <NOMBRE_DEL_POD>
 kubectl get pods
+
+
+--------------------------------------------------------------------------------
+PARTE 4: COMANDOS ÚTILES (Actualización y Limpieza)
+--------------------------------------------------------------------------------
+
+# Si modificás el código en main.go y querés actualizar los pods que están corriendo:
+docker build -t app-distribuidos:v1 .
+kubectl apply -f k8s-manifest.yaml
+kubectl rollout restart deployment app-distribuidos
+
+# Para borrar todo al terminar la demo y dejar el clúster limpio:
+kubectl delete -f k8s-manifest.yaml
